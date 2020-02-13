@@ -1,0 +1,340 @@
+<div class="container">
+<canvas id="canvas" HEIGHT=650 WIDTH=750></canvas>
+<div class="rightbox">
+<form id="form_under">
+</form>
+<p id="pickColors"><strong>Pick colors</strong><br>
+<span id="pickColor1">Player 1: </span><br>
+<span id="pickColor2">Player 2: </span></p>
+<p><strong>Pick shape</strong><br>
+<span id="pickShape"></span></p>
+<hr style="height:5px; visibility:hidden;" />
+<p><span id="whoseturn"></span></p>
+</div>
+</div>
+
+<div class="hide">
+<audio id="sfx_error" preload="auto">
+	<source src="sounds/error.opus" type="audio/ogg; codecs=opus"/>
+</audio>
+<audio id="sfx_lose" preload="auto">
+	<source src="sounds/lose.opus" type="audio/ogg; codecs=opus"/>
+</audio>
+<audio id="sfx_select" preload="auto">
+	<source src="sounds/select.opus" type="audio/ogg; codecs=opus"/>
+</audio>
+<audio id="sfx_start" preload="auto">
+	<source src="sounds/start.opus" type="audio/ogg; codecs=opus"/>
+</audio>
+<audio id="sfx_win" preload="auto">
+	<source src="sounds/win.opus" type="audio/ogg; codecs=opus"/>
+</audio>
+</div>
+
+<style>
+* {cursor: default;}
+#pickColor1 a, #pickColor2 a, #pickShape a {
+	text-decoration: underline;
+}
+
+.rightbox{
+	float: right;
+	width: 300px;
+	height: 330px;
+	border: solid 10px darkblue;
+	margin-top: 15px;
+	text-align: center;
+	padding-top: 20px;
+	font-family: garamond;
+	font-size: 20px
+}
+
+.container{
+	width: 1100px;
+	height: 650px;
+}
+
+#whoseturn{
+	font-weight: bold;
+	font-size: 25px;
+	border: dotted 4px;
+	border-radius: 5px;
+	padding: 5px;
+}
+</style>
+
+<script>
+var canvas;
+var ctx;
+var placements, choice, full, win1, win2, name, outside, currentColumn, currentRow;
+var shape = "circle";
+var p1color = "red", p2color = "gold";
+var circles = [];
+var sounds = {};
+var turn;		// 1 = p1's turn, 2 = p2's turn, 3 = p1 wins, 4 = p2 wins
+var outsidex = 40;
+var outsidey = 20;
+var anim = 0;
+var lastTimestamp = 0;
+
+function draw(timestamp){ 
+	ctx.fillStyle = "#000000";
+	ctx.clearRect(0, 0, canvas.width, canvas.height);
+	ctx.fillStyle = 'blue';
+	ctx.strokeStyle = 'darkblue';
+	ctx.fillRect(outsidex, outsidey, 700, 600);
+	ctx.lineWidth = 10;
+	ctx.strokeRect(outsidex, outsidey, 700 + 5, 600 + 5);
+	for (var i = 0; i < 7; i++) {
+		for (var j = 0; j < 6; j++) {
+			for(var z = 0; z < 2; z++){
+				var startx = 98 * i;
+				var starty = 100 * j;
+				if(circles[i][j] == 0)
+					ctx.fillStyle = 'white';
+				else if(circles[i][j] == 1) {
+					ctx.fillStyle = p1color;
+				}
+				else if(circles[i][j] == 2) {
+					ctx.fillStyle = p2color;
+				}
+				
+				if (i == currentColumn && j == currentRow){
+					if(z == 0)
+						ctx.fillStyle = 'white';
+					else
+						ctx.strokeStyle = 'black';			// shows last circle picked
+					
+					if(z == 1 && timestamp - anim < 750){
+						starty = 100 * j * ((timestamp-anim) / 750);
+					}
+				}
+				else
+					ctx.strokeStyle = 'darkblue';
+					
+				if(shape == "circle"){
+					ctx.beginPath();
+					ctx.arc(startx + 58 + outsidex, starty + 53 + outsidey, 38, 0, 2 * Math.PI);
+					ctx.closePath();
+				}
+				else if(shape == "triangle"){
+					ctx.beginPath();
+					ctx.moveTo(outsidex + 60 + startx, outsidey + 20 + starty);
+					ctx.lineTo(startx + 140, starty + 110);
+					ctx.lineTo(startx + 60, starty + 110);
+					ctx.closePath();
+				}
+				ctx.fill();
+				ctx.lineWidth=7;
+				ctx.stroke();
+				if(!(i == currentColumn && j == currentRow)) break;
+			}
+		}
+	}
+	
+	if (turn == 3) {
+		winnerNotif(p1color, 400, 200, "Player 1 wins!", 250, 48, "48px serif");
+	}
+	else if (turn == 4) {
+		winnerNotif(p2color, 400, 200, "Player 2 wins!", 250, 48, "48px serif");
+	}
+	window.requestAnimationFrame(draw);
+	lastTimestamp = timestamp;
+}
+
+function PlaySound(sound){
+	sounds[sound].currentTime = 0;
+	sounds[sound].play();
+}
+
+function winnerNotif(color, w, h, str, textW, textH, font){
+	ctx.fillStyle = color;
+	ctx.beginPath();
+	var x = outsidex + 350 - (w / 2);
+	var y = outsidey + 300 - (h / 2);
+	ctx.fillRect(x, y, w, h);
+	ctx.strokeStyle = 'black';
+	ctx.strokeRect(x, y, w, h);
+	ctx.font = font;
+	ctx.fillStyle = "#000000";
+	ctx.fillText(str, (x + ((w - textW) / 2)), (y + ((h + (textH / 2)) / 2)), textW);
+}
+
+function placeCircle(column){
+	var row = 0;
+	anim = lastTimestamp;
+	if (circles[column][row] == 1 || circles[column][row] == 2) {
+		PlaySound("error");
+		return 0;
+	}
+	while (circles[column][row + 1] == 0 && row != 5)
+		row++;
+	currentColumn = column;
+	currentRow = row;
+	circles[currentColumn][currentRow] = turn;
+	checkWin(column, row);
+	if (turn == 1){
+		turn = 2;
+		document.getElementById("whoseturn").innerHTML = "Player " + turn + "'s Turn";
+		document.getElementById("whoseturn").style.color = p2color;
+	}else if (turn == 2){
+		turn = 1;
+		document.getElementById("whoseturn").innerHTML = "Player " + turn + "'s Turn";
+		document.getElementById("whoseturn").style.color = p1color;
+	}
+}
+
+function checkWin(column, row) {
+	var count = 0;
+	for (var i = 0; i < 7; i++) {			// checks for horizontal win,
+		if (circles[i][row] == turn)		// program only needs to check row
+			count++;						// which circle was just filled
+		else
+			count = 0;
+		if (count >= 4) {
+			turn = turn + 2;
+			break;
+		}
+	}
+	count = 0;
+	for (var j = 0; j < 6; j++) {			// checks for vertical win
+		if (circles[column][j] == turn)
+			count++;
+		else
+			count = 0;
+		if (count >= 4) {
+			turn = turn + 2;
+			break;
+		}
+	}
+	count = 0;
+	for (var x = -3; x < 4; x++) {		// checks for positive diagonal win
+		if (circles[column + x] && circles[column + x][row + x] && (circles[column + x][row + x] == turn))
+			count++;
+		else
+			count = 0;
+		if (count >= 4) {
+			turn = turn + 2;
+			break;
+		}
+	}
+	count = 0;
+	for (var x = -3; x < 4; x++) {		// checks for negative diagonal win
+		if (circles[column + x] && circles[column + x][row - x] && circles[column + x][row - x] == turn)
+			count++;
+		else
+			count = 0;
+		if (count >= 4)
+			turn = turn + 2;
+	}
+	var total = 0;
+	if (turn == 1 || turn == 2) {
+		for (var i = 0; i < 7; i++) {
+			for (var j = 0; j < 6; j++) {
+				if (circles[i][j] != 0)
+					total++;
+			}
+		}
+		if (total == 42)
+			PlaySound("lose");
+		else
+			PlaySound("select");
+	}
+	else {
+		PlaySound("win");
+	}
+}
+
+function c_mousedown(e) {
+	var canvasRect = canvas.getBoundingClientRect();
+	var cmx = e.clientX - canvasRect.left;	// real x without scroll
+	var cmy = e.clientY - canvasRect.top;	// real y
+	if (turn == 1 || turn == 2) {
+		var column = 0;
+		var where = cmx - outsidex;
+		while (where > 100) {
+			column++;
+			where = where - 100;
+		}
+		if (where > 92 || where < 8)
+			return 0;
+		placeCircle(column);
+	}
+	else if (turn == 3 || turn == 4) {
+		restartgame();
+	}
+}
+
+function changecolor(e) {
+	var color = e.target.getAttribute("data-color");
+	if(p1color != color && p2color != color){
+		if(e.target.getAttribute("data-player") == "1"){
+			p1color = color;
+			if(turn == 1) document.getElementById("whoseturn").style.color = p1color;
+		}
+		else{
+			p2color = color;
+			if(turn == 2) document.getElementById("whoseturn").style.color = p2color;
+		}
+		PlaySound("select");
+	}
+}
+
+function changeshape(e) {
+	var newshape = e.target.getAttribute("data-shape");
+	if (newshape != shape) {
+		shape = newshape;
+		PlaySound("select");
+	}
+}
+
+function restartgame() {
+	PlaySound("start");
+	currentRow = undefined;
+	currentColumn = undefined;
+	turn = 1;
+	document.getElementById("whoseturn").innerHTML = "Player " + turn + "'s Turn";
+	document.getElementById("whoseturn").style.color = p1color;
+	for (var i = 0; i < 7; i++) {
+		circles[i] = [];
+		for (var j = 0; j < 6; j++) {
+			circles[i][j] = 0;
+		}
+	}
+}
+
+function load(){
+	["error", "lose", "select", "start", "win"].forEach(function(x){
+		sounds[x] = document.getElementById("sfx_" + x);
+	});
+	restartgame();
+	canvas = document.getElementById('canvas');
+	["red", "gold", "darkorange", "lime", "cyan", "darkviolet", "magenta", "gray"].forEach(function(x){
+		["1", "2"].forEach(function(y){
+			var a = document.createElement("a");
+			a.innerHTML = x;
+			a.style.color = x;
+			a.setAttribute("data-color", x);
+			a.setAttribute("data-player", y);
+			a.addEventListener("mousedown", changecolor);
+			document.getElementById("pickColor" + y).appendChild(a);
+			document.getElementById("pickColor" + y).appendChild(document.createTextNode(" "));
+		});
+	});
+	["circle", "triangle"].forEach(function(x){
+		var a = document.createElement("a");
+		a.innerHTML = x;
+		a.setAttribute("data-shape", x);
+		a.addEventListener("mousedown", changeshape);
+		document.getElementById("pickShape").appendChild(a);	
+		document.getElementById("pickShape").appendChild(document.createTextNode(" "));
+	});
+	ctx = canvas.getContext('2d');
+	turn = 1;
+	canvas.addEventListener("mousedown", c_mousedown);
+	window.requestAnimationFrame(draw);
+		
+}
+
+window.addEventListener("load", load);
+</script>
